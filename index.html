@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CinePlex — Book Movie Tickets</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<!-- ── NAVBAR ─────────────────────────────────────────── -->
+<nav class="navbar">
+  <a class="brand" href="index.html">CINE<span>PLEX</span></a>
+  <div class="nav-center">
+    <input id="searchInput" type="text" placeholder="Search movies…" class="search-bar"/>
+    <span class="live-badge"><span class="live-dot"></span> LIVE · TMDb</span>
+  </div>
+  <div class="nav-actions" id="navActions"></div>
+</nav>
+
+<!-- ── HERO ───────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero-content">
+    <p class="hero-eyebrow">Now Showing</p>
+    <h1 class="hero-title">Find & Book<br/>Your Next<br/><span>Movie</span></h1>
+    <p class="hero-sub">Live posters, trailers & seats. Book yours in under a minute.</p>
+  </div>
+  <div class="hero-reel" id="heroReel"></div>
+</section>
+
+<!-- ── GENRE FILTER ───────────────────────────────────── -->
+<section class="genre-section">
+  <div class="container">
+    <div class="genre-pills" id="genrePills">
+      <button class="pill active" data-genre="">All</button>
+      <button class="pill" data-genre="Action">Action</button>
+      <button class="pill" data-genre="Sci-Fi">Sci-Fi</button>
+      <button class="pill" data-genre="Drama">Drama</button>
+      <button class="pill" data-genre="Comedy">Comedy</button>
+      <button class="pill" data-genre="Thriller">Thriller</button>
+      <button class="pill" data-genre="Horror">Horror</button>
+    </div>
+  </div>
+</section>
+
+<!-- ── MOVIES GRID ────────────────────────────────────── -->
+<section class="movies-section container">
+  <h2 class="section-title">Now Showing</h2>
+  <div class="movies-grid" id="moviesGrid"></div>
+</section>
+
+<!-- ── UPCOMING MOVIES GRID ───────────────────────────── -->
+<section class="movies-section container">
+  <h2 class="section-title">Coming Soon</h2>
+  <div class="movies-grid" id="upcomingGrid"></div>
+</section>
+
+<!-- ── FOOTER ─────────────────────────────────────────── -->
+<footer class="footer">
+  <p class="brand">CINE<span>PLEX</span></p>
+  <p>© 2026 CinePlex. Movie data courtesy of TMDb. All rights reserved.</p>
+</footer>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/tmdb.js"></script>
+<script src="js/store.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/movies.js"></script>
+<script src="js/chatbot.js"></script>
+<script src="js/places.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
