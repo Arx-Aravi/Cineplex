@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Movie — CinePlex</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="brand" href="../index.html">CINE<span>PLEX</span></a>
+  <div class="nav-center"></div>
+  <div class="nav-actions" id="navActions"></div>
+</nav>
+
+<div id="toast" class="toast hidden"></div>
+
+<!-- ── MOVIE HERO (with backdrop) ───────────────────── -->
+<div id="movieBackdrop" style="position:relative;min-height:380px;background-size:cover;background-position:center top;display:flex;align-items:flex-end">
+  <div id="backdropOverlay" style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(13,13,15,.4) 0%,rgba(13,13,15,.85) 70%,#0D0D0F 100%)"></div>
+  <div id="movieHero" style="position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:48px 32px;width:100%"></div>
+</div>
+
+<!-- ── LOCATION BAR ─────────────────────────────────── -->
+<section class="container" style="padding-top:32px">
+  <div class="location-bar" id="locationBar">
+    <span class="location-bar-icon">📍</span>
+    <span class="location-bar-text" id="locationBarText">Showing theaters in <strong>Chennai</strong> (default)</span>
+    <button class="btn btn-ghost" style="font-size:12px;padding:7px 14px" id="useLocationBtn">Use my location</button>
+    <button class="btn btn-ghost" style="font-size:12px;padding:7px 14px" id="pickCityBtn">Choose city</button>
+  </div>
+  <div id="cityPickerWrap" style="display:none;margin-bottom:24px">
+    <div class="city-picker-grid" id="cityPickerGrid"></div>
+  </div>
+</section>
+
+<!-- ── DATE SELECTOR ────────────────────────────────── -->
+<section class="container" style="padding-top:8px">
+  <h3 style="font-size:24px;margin-bottom:16px">Select Date</h3>
+  <div id="datePills" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+</section>
+
+<!-- ── SHOWS ─────────────────────────────────────────── -->
+<section class="container" style="padding:32px 0 80px">
+  <h3 style="font-size:24px;margin-bottom:16px">Available Shows</h3>
+  <div id="showsList"></div>
+</section>
+
+<script src="../js/tmdb.js"></script>
+<script src="../js/places.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/movies.js"></script>
+<script src="../js/chatbot.js"></script>
+<script>
+const params  = new URLSearchParams(location.search);
+const movieId = parseInt(params.get('id'));
+let selectedDate = '';
+let movie = null;
+
+// ── User location state ───────────────────────────────────
+let userCoords = null;          // { lat, lng } once resolved
+let currentCityLabel = 'Chennai (default)';
+const DEFAULT_CITY = INDIAN_CITIES.find(c => c.name === 'Chennai');
+
+function setLocationBarText(text) {
+  document.getElementById('locationBarText').innerHTML = text;
+}
+
+function renderCityPicker() {
+  const grid = document.getElementById('cityPickerGrid');
+  grid.innerHTML = INDIAN_CITIES.map(c =>
+    `<button class="city-picker-btn" data-city="${c.name}">${c.name}</button>`
+  ).join('');
+  grid.querySelectorAll('.city-picker-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const city = INDIAN_CITIES.find(c => c.name === btn.dataset.city);
+      userCoords = { lat: city.lat, lng: city.lng };
+      currentCityLabel = city.name;
+      setLocationBarText(`Showing theaters in <strong>${city.name}</strong>`);
+      document.getElementById('cityPickerWrap').style.display = 'none';
+      loadShows();
+    });
+  });
+}
+
+async function useMyLocation() {
+  const btn = document.getElementById('useLocationBtn');
+  btn.textContent = 'Locating…'; btn.disabled = true;
+  try {
+    userCoords = await Geo.getCurrentPosition();
+    currentCityLabel = 'your current location';
+    setLocationBarText(`Showing theaters near <strong>your current location</strong>`);
+    showToast('Location found — sorting theaters by distance.', 'success');
+    loadShows();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+  btn.textContent = 'Use my location'; btn.disabled = false;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('useLocationBtn').addEventListener('click', useMyLocation);
+  document.getElementById('pickCityBtn').addEventListener('click', () => {
+    const wrap = document.getElementById('cityPickerWrap');
+    wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
+  });
+  renderCityPicker();
+});
+
+function getNext7Days() {
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    days.push(d.toISOString().split('T')[0]);
+  }
+  return days;
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-IN', { weekday:'short', month:'short', day:'numeric' });
+}
+
+function renderDatePills() {
+  const days = getNext7Days();
+  selectedDate = days[0];
+  const container = document.getElementById('datePills');
+  container.innerHTML = days.map((d, i) => `
+    <button class="pill ${i === 0 ? 'active' : ''}" data-date="${d}">${fmtDate(d)}</button>
+  `).join('');
+
+  container.addEventListener('click', e => {
+    const btn = e.target.closest('.pill');
+    if (!btn) return;
+    container.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    selectedDate = btn.dataset.date;
+    loadShows();
+  });
+}
+
+function renderMovieHero(m) {
+  document.title = `${m.title} — CinePlex`;
+
+  const backdrop = TMDB.backdrop(m.backdropPath, 'w1280');
+  if (backdrop) {
+    document.getElementById('movieBackdrop').style.backgroundImage = `url('${backdrop}')`;
+  }
+
+  const poster = TMDB.poster(m.posterPath, 'w342');
+
+  document.getElementById('movieHero').innerHTML = `
+    <div style="display:flex;gap:32px;align-items:flex-end;flex-wrap:wrap">
+      <div style="width:180px;flex-shrink:0">
+        ${poster
+          ? `<img src="${poster}" style="width:100%;border-radius:10px;border:1px solid var(--border);box-shadow:0 12px 40px rgba(0,0,0,.6)" alt="${m.title}"/>`
+          : `<div style="width:100%;aspect-ratio:2/3;border-radius:10px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:64px">🎬</div>`
+        }
+      </div>
+      <div style="flex:1;min-width:280px">
+        <p style="font-size:11px;letter-spacing:.25em;text-transform:uppercase;color:var(--gold);margin-bottom:12px">${genreNamesFor(m.genreIds) || 'Now Showing'}</p>
+        <h1 style="font-size:clamp(36px,6vw,72px);line-height:.95;margin-bottom:16px">${m.title}</h1>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;align-items:center">
+          <span class="movie-rating">★ ${m.rating ?? 'N/A'}</span>
+          <span style="background:rgba(0,0,0,.4);padding:4px 12px;border-radius:4px;font-size:12px">${m.language || 'EN'}</span>
+          ${m.duration ? `<span style="background:rgba(0,0,0,.4);padding:4px 12px;border-radius:4px;font-size:12px">${m.duration} min</span>` : ''}
+          <span style="font-size:12px;color:var(--text-muted)">${(m.releaseDate || '').slice(0,4)}</span>
+          <button class="btn-trailer" onclick="openTrailer(${m.id}, '${m.title.replace(/'/g,"\\'")}')">▶ Watch Trailer</button>
+        </div>
+        <p style="color:var(--text-muted);max-width:600px;line-height:1.7;font-size:14px">${m.description || ''}</p>
+      </div>
+    </div>
+  `;
+}
+
+async function loadShows() {
+  const el = document.getElementById('showsList');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Finding nearby theaters…</div>';
+
+  const coords = userCoords || DEFAULT_CITY;
+
+  let theaters = [];
+  let usingRealTheaters = false;
+
+  if (PlacesAPI.hasKey()) {
+    try {
+      theaters = await PlacesAPI.nearbyTheaters(coords.lat, coords.lng, 20000);
+      usingRealTheaters = theaters.length > 0;
+    } catch (err) {
+      console.warn('Places API error, falling back to generated theaters:', err.message);
+    }
+  }
+
+  if (!usingRealTheaters) {
+    // Fall back to the deterministic generated theaters (still shown per real city coords)
+    theaters = Store.THEATERS.map(t => ({
+      placeId: 't' + t.id, name: t.name, address: t.location,
+      lat: coords.lat + (Math.random() - 0.5) * 0.08,
+      lng: coords.lng + (Math.random() - 0.5) * 0.08,
+      rating: null, openNow: null,
+    }));
+  }
+
+  // Attach distance + sort nearest-first
+  theaters = theaters.map(t => ({
+    ...t,
+    distanceKm: (t.lat != null && t.lng != null) ? Geo.distanceKm(coords.lat, coords.lng, t.lat, t.lng) : null,
+  })).sort((a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999));
+
+  if (!theaters.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🎞️</div><div class="empty-title">No Theaters Found</div><p>Try a different city.</p></div>`;
+    return;
+  }
+
+  if (!PlacesAPI.hasKey()) {
+    el.insertAdjacentHTML('beforebegin', `
+      <div style="background:rgba(232,160,32,.08);border:1px solid var(--gold);border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:12px;color:var(--text)">
+        <strong style="color:var(--gold)">⚠ Demo mode:</strong> Add a Google Places API key in <code>js/places.js</code> for real cinema names &amp; addresses. Showing generated theaters near ${currentCityLabel} for now.
+      </div>
+    `);
+  }
+
+  el.innerHTML = theaters.map((t, idx) => {
+    const shows = Store.showsForTheater(movieId, selectedDate, t.placeId, idx);
+    return `
+    <div style="margin-bottom:28px">
+      <div class="flex-between" style="margin-bottom:4px;padding-bottom:10px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px">
+        <h4 style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--text)">🎭 ${t.name}</h4>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${t.distanceKm != null ? `<span class="theater-card-distance">📍 ${Geo.formatDistance(t.distanceKm)}</span>` : ''}
+          ${t.rating ? `<span class="theater-card-rating">★ ${t.rating}</span>` : ''}
+          ${t.openNow === true ? '<span class="theater-open-badge">● Open Now</span>' : ''}
+          ${t.openNow === false ? '<span class="theater-closed-badge">● Closed</span>' : ''}
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+        ${t.address}
+        ${t.mapsUrl ? ` · <a href="${t.mapsUrl}" target="_blank" style="color:var(--gold)">View on Maps ↗</a>` : ''}
+      </div>
+      ${shows.map(s => `
+        <div class="show-card" onclick="goToSeats('${s.id}', '${t.name.replace(/'/g,"\\'")}')">
+          <div>
+            <div class="show-time">${s.showTime}</div>
+            <div class="show-meta">${s.screenName}</div>
+          </div>
+          <div>
+            <div style="font-size:13px;color:var(--text-muted)">From <strong style="color:var(--text)">₹${s.priceRegular}</strong></div>
+            <div style="font-size:12px;color:var(--text-muted)">Premium ₹${s.pricePremium} · Recliner ₹${s.priceRecliner}</div>
+          </div>
+          <div>
+            <button class="btn btn-primary" onclick="event.stopPropagation();goToSeats('${s.id}','${t.name.replace(/'/g,"\\'")}')">Select Seats</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  }).join('');
+}
+
+function goToSeats(showId, theaterName) {
+  if (!Auth.isLoggedIn()) {
+    sessionStorage.setItem('cp_redirect', `seats.html?showId=${showId}&movieId=${movieId}&date=${selectedDate}`);
+    window.location.href = 'login.html';
+    return;
+  }
+  window.location.href = `seats.html?showId=${showId}&movieId=${movieId}&date=${selectedDate}&theater=${encodeURIComponent(theaterName)}`;
+}
+
+async function init() {
+  if (!movieId) { window.location.href = '../index.html'; return; }
+  renderNavActions();
+  renderDatePills();
+
+  try {
+    if (TMDB.hasKey()) {
+      genreNameToId = Object.fromEntries(Object.entries(await TMDB.genreMap()));
+      movie = await TMDB.details(movieId);
+    } else {
+      movie = FALLBACK_MOVIES.find(m => m.id === movieId) || FALLBACK_MOVIES[0];
+    }
+    renderMovieHero(movie);
+  } catch (e) {
+    movie = FALLBACK_MOVIES.find(m => m.id === movieId) || FALLBACK_MOVIES[0];
+    renderMovieHero(movie);
+  }
+
+  loadShows();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

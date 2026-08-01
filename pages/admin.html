@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin — CinePlex</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<div id="toast" class="toast hidden"></div>
+
+<div class="admin-layout">
+  <aside class="admin-sidebar">
+    <div style="padding:20px 24px 32px">
+      <a href="../index.html" class="brand" style="font-size:22px;color:var(--text);text-decoration:none">CINE<span>PLEX</span></a>
+      <div style="font-size:11px;color:var(--text-muted);letter-spacing:.1em;text-transform:uppercase;margin-top:4px">Admin Panel</div>
+    </div>
+    <nav>
+      <a class="admin-nav-link active" data-section="dashboard" href="#">📊 Dashboard</a>
+      <a class="admin-nav-link" data-section="bookings" href="#">🎟️ Bookings</a>
+      <a class="admin-nav-link" data-section="users" href="#">👥 Users</a>
+    </nav>
+    <div style="padding:24px;margin-top:auto">
+      <button onclick="Auth.logout()" class="btn btn-ghost" style="width:100%;font-size:13px">Logout</button>
+    </div>
+  </aside>
+
+  <main class="admin-content">
+    <div id="section-dashboard">
+      <h1 style="font-size:48px;margin-bottom:8px">Dashboard</h1>
+      <p style="color:var(--text-muted);margin-bottom:32px">Live data from this browser's bookings.</p>
+      <div class="stats-grid" id="statsGrid"></div>
+      <h3 style="font-size:24px;margin-bottom:16px">Recent Bookings</h3>
+      <div class="table-wrap" id="recentBookingsTable"></div>
+    </div>
+
+    <div id="section-bookings" style="display:none">
+      <h1 style="font-size:48px;margin-bottom:32px">All Bookings</h1>
+      <div class="table-wrap" id="bookingsTable"></div>
+    </div>
+
+    <div id="section-users" style="display:none">
+      <h1 style="font-size:48px;margin-bottom:32px">Registered Users</h1>
+      <div class="table-wrap" id="usersTable"></div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/tmdb.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/auth.js"></script>
+<script>
+  if (!Auth.isLoggedIn()) { window.location.href = 'login.html'; }
+  if (!Auth.isAdmin()) {
+    document.body.innerHTML = `<div class="empty-state" style="padding-top:120px"><div class="empty-icon">🔒</div><div class="empty-title">Admin Access Required</div><p>Sign in as admin@cineplex.com (password: admin123) to view this page.</p><a href="login.html" class="btn btn-primary" style="margin-top:20px">Sign In</a></div>`;
+  }
+
+  const sections = ['dashboard','bookings','users'];
+  function showSection(name) {
+    sections.forEach(s => document.getElementById(`section-${s}`).style.display = s === name ? '' : 'none');
+    document.querySelectorAll('.admin-nav-link').forEach(l => l.classList.toggle('active', l.dataset.section === name));
+    loaders[name]?.();
+  }
+  document.querySelectorAll('.admin-nav-link').forEach(link => {
+    link.addEventListener('click', e => { e.preventDefault(); showSection(link.dataset.section); });
+  });
+
+  function loadDashboard() {
+    const stats = Store.dashboardStats();
+    document.getElementById('statsGrid').innerHTML = `
+      <div class="stat-card"><div class="stat-label">Registered Users</div><div class="stat-value">${stats.totalUsers}</div></div>
+      <div class="stat-card"><div class="stat-label">Confirmed Bookings</div><div class="stat-value">${stats.totalBookings}</div></div>
+      <div class="stat-card"><div class="stat-label">Total Revenue</div><div class="stat-value" style="font-size:32px">₹${stats.totalRevenue.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="stat-label">Today's Bookings</div><div class="stat-value">${stats.todaysBookings}</div></div>
+      <div class="stat-card"><div class="stat-label">Today's Revenue</div><div class="stat-value" style="font-size:32px">₹${stats.todaysRevenue.toLocaleString()}</div></div>
+    `;
+
+    const recent = Store.bookings().slice(0, 8);
+    document.getElementById('recentBookingsTable').innerHTML = bookingsTableHtml(recent);
+  }
+
+  function bookingsTableHtml(bookings) {
+    if (!bookings.length) {
+      return `<div class="empty-state"><div class="empty-icon">🎟️</div><div class="empty-title">No bookings yet</div><p>Bookings made on this device will appear here.</p></div>`;
+    }
+    return `<table><thead><tr><th>Ref</th><th>Movie</th><th>Theater</th><th>Date</th><th>Seats</th><th>Amount</th><th>Status</th><th>Payment</th></tr></thead>
+      <tbody>${bookings.map(b => `<tr>
+        <td class="booking-ref">${b.bookingRef}</td>
+        <td>${b.movieTitle}</td>
+        <td>${b.theaterName}</td>
+        <td>${b.showDate}</td>
+        <td>${(b.seats||[]).length}</td>
+        <td>₹${b.totalAmount}</td>
+        <td><span class="status-badge status-${b.status}">${b.status}</span></td>
+        <td style="color:${b.paymentStatus==='PAID'?'var(--green)':'var(--red)'}">${b.paymentStatus}</td>
+      </tr>`).join('')}</tbody></table>`;
+  }
+
+  function loadBookings() {
+    document.getElementById('bookingsTable').innerHTML = bookingsTableHtml(Store.bookings());
+  }
+
+  function loadUsers() {
+    const users = Store.users();
+    document.getElementById('usersTable').innerHTML = `
+      <table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Joined</th></tr></thead>
+      <tbody>${users.map(u => `<tr>
+        <td style="color:var(--text-muted)">#${u.id}</td>
+        <td><strong>${u.name}</strong></td>
+        <td>${u.email}</td>
+        <td>${u.phone || '—'}</td>
+        <td><span class="status-badge ${u.role==='ADMIN'?'status-PENDING':'status-CONFIRMED'}">${u.role}</span></td>
+        <td>${new Date(u.createdAt).toLocaleDateString()}</td>
+      </tr>`).join('')}</tbody></table>`;
+  }
+
+  const loaders = { dashboard: loadDashboard, bookings: loadBookings, users: loadUsers };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    renderNavActions();
+    loadDashboard();
+  });
+</script>
+</body>
+</html>

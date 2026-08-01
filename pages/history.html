@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>My Bookings — CinePlex</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="brand" href="../index.html">CINE<span>PLEX</span></a>
+  <div class="nav-center"></div>
+  <div class="nav-actions" id="navActions"></div>
+</nav>
+
+<div id="toast" class="toast hidden"></div>
+
+<div class="container history-page">
+  <div class="flex-between mb-4">
+    <h1 class="page-title">My Bookings</h1>
+    <a href="../index.html" class="btn btn-ghost">Browse Movies</a>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-filter="all">All</button>
+    <button class="tab-btn" data-filter="CONFIRMED">Confirmed</button>
+    <button class="tab-btn" data-filter="CANCELLED">Cancelled</button>
+  </div>
+
+  <div id="bookingsList"><div class="loading"><div class="spinner"></div> Loading bookings…</div></div>
+</div>
+
+<script src="../js/tmdb.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/chatbot.js"></script>
+<script>
+  if (!Auth.isLoggedIn()) { window.location.href = 'login.html'; }
+
+  let allBookings = [];
+  let activeFilter = 'all';
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+  }
+
+  function posterThumb(b) {
+    return b.moviePoster
+      ? `<img src="${b.moviePoster}" style="width:70px;height:100px;object-fit:cover;border-radius:8px;flex-shrink:0" alt=""/>`
+      : `<div style="width:70px;height:100px;border-radius:8px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0">🎬</div>`;
+  }
+
+  function renderBookings(bookings) {
+    const el = document.getElementById('bookingsList');
+    if (!bookings.length) {
+      el.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🎟️</div>
+          <div class="empty-title">No Bookings Yet</div>
+          <p>Book your first ticket and it'll show up here.</p>
+          <a href="../index.html" class="btn btn-primary" style="margin-top:20px">Browse Movies</a>
+        </div>`;
+      return;
+    }
+
+    el.innerHTML = bookings.map(b => `
+      <div class="booking-card">
+        ${posterThumb(b)}
+        <div>
+          <div class="booking-title">${b.movieTitle || '—'}</div>
+          <div class="booking-detail">🏛️ <strong>${b.theaterName || '—'}</strong> · ${b.screenName || ''}</div>
+          <div class="booking-detail">📅 <strong>${fmtDate(b.showDate)}</strong> at <strong>${b.showTime || '—'}</strong></div>
+          <div class="booking-detail">💺 Seats: <strong>${(b.seats || []).map(s => s.seatId).sort().join(', ')}</strong></div>
+          <div class="booking-detail" style="margin-top:6px">Ref: <span class="booking-ref">${b.bookingRef}</span></div>
+          <div class="booking-detail">Paid via <strong>${b.paymentMethod}</strong> · Total: <strong style="color:var(--gold)">₹${b.totalAmount}</strong></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:12px">
+          <span class="status-badge status-${b.status}">${b.status}</span>
+          ${b.status !== 'CANCELLED' ? `
+            <button class="btn btn-ghost" style="font-size:12px" onclick="cancelBooking('${b.bookingRef}', this)">Cancel</button>
+          ` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function filterBookings() {
+    const filtered = activeFilter === 'all'
+      ? allBookings
+      : allBookings.filter(b => b.status === activeFilter);
+    renderBookings(filtered);
+  }
+
+  function cancelBooking(ref, btn) {
+    if (!confirm('Cancel this booking? This cannot be undone.')) return;
+    btn.textContent = 'Cancelling…'; btn.disabled = true;
+    try {
+      Store.cancelBooking(ref);
+      const idx = allBookings.findIndex(b => b.bookingRef === ref);
+      if (idx !== -1) {
+        allBookings[idx].status = 'CANCELLED';
+        allBookings[idx].paymentStatus = 'REFUNDED';
+      }
+      filterBookings();
+      showToast('Booking cancelled. Seats released.', 'info');
+    } catch (err) {
+      showToast(err.message || 'Could not cancel booking.', 'error');
+      btn.textContent = 'Cancel'; btn.disabled = false;
+    }
+  }
+
+  function init() {
+    renderNavActions();
+    const user = Auth.getUser();
+    allBookings = Store.myBookings(user.id);
+    filterBookings();
+  }
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.dataset.filter;
+      filterBookings();
+    });
+  });
+
+  document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

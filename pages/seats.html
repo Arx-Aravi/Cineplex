@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Select Seats — CinePlex</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="brand" href="../index.html">CINE<span>PLEX</span></a>
+  <div class="nav-center" id="showInfo" style="color:var(--text-muted);font-size:14px"></div>
+  <div class="nav-actions" id="navActions"></div>
+</nav>
+
+<div id="toast" class="toast hidden"></div>
+
+<div class="container seat-map-page">
+  <div class="screen-indicator"></div>
+
+  <div class="seat-legend">
+    <div class="legend-item"><div class="legend-box" style="background:var(--bg3);border-color:var(--border)"></div> Available</div>
+    <div class="legend-item"><div class="legend-box" style="background:var(--green);border-color:var(--green)"></div> Selected</div>
+    <div class="legend-item"><div class="legend-box" style="background:var(--bg2);border-color:var(--border);opacity:.5"></div> Booked</div>
+    <div class="legend-item"><div class="legend-box" style="border-color:#8855ff"></div> Premium</div>
+    <div class="legend-item"><div class="legend-box" style="border-color:var(--red)"></div> Recliner</div>
+  </div>
+
+  <div id="seatMap"><div class="loading"><div class="spinner"></div> Loading seats…</div></div>
+</div>
+
+<div class="booking-summary" id="bookingSummary" style="display:none">
+  <div>
+    <div class="summary-seats" id="summarySeats">No seats selected</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-top:4px" id="summaryInfo"></div>
+  </div>
+  <div class="summary-total" id="summaryTotal">₹0</div>
+  <button id="proceedBtn" class="btn btn-primary" style="padding:14px 32px;font-size:18px" disabled>
+    Proceed to Pay
+  </button>
+</div>
+
+<!-- ═══════════ PAYMENT MODAL ═══════════ -->
+<div class="modal-overlay" id="paymentModal">
+  <div class="modal pay-modal">
+
+    <!-- Step 1: Payment details -->
+    <div id="payStepDetails">
+      <div class="pay-header">
+        <div class="pay-merchant">CinePlex Payments · Secured</div>
+        <div class="pay-amount" id="payAmount">₹0</div>
+        <div class="pay-desc" id="payDesc"></div>
+      </div>
+      <div class="pay-body">
+        <div id="razorpayBadgeRow" style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px 14px;background:var(--bg3);border-radius:8px">
+          <span style="font-size:20px">🔐</span>
+          <div style="font-size:12px;color:var(--text-muted)">
+            Secured by <strong style="color:var(--text)">Razorpay</strong> — UPI, Cards &amp; Net Banking all supported.
+            <span id="testModeNote" style="display:block;color:var(--gold);margin-top:2px">Test mode — no real money will be charged.</span>
+          </div>
+        </div>
+
+        <div style="background:var(--bg3);border-radius:8px;padding:14px 16px;margin-bottom:20px;font-size:12px;color:var(--text-muted);line-height:1.7">
+          <strong style="color:var(--text)">Test credentials:</strong><br/>
+          UPI: <code>success@razorpay</code> · Card: <code>4111 1111 1111 1111</code> (any future expiry/CVV)
+        </div>
+
+        <div style="display:flex;gap:12px;margin-top:8px">
+          <button class="btn btn-ghost" style="flex:1" onclick="closePayment()">Cancel</button>
+          <button class="btn btn-primary" style="flex:1;font-size:16px" id="confirmPayBtn">Pay with Razorpay</button>
+        </div>
+        <div class="secure-badge">🔒 256-bit encrypted · Order created server-side, signature verified after payment</div>
+      </div>
+    </div>
+
+    <!-- Step 2: Processing -->
+    <div id="payStepProcessing" style="display:none">
+      <div class="pay-processing">
+        <div class="spinner" style="width:48px;height:48px;margin-bottom:20px"></div>
+        <h3 style="font-size:22px;margin-bottom:8px">Processing Payment…</h3>
+        <p style="color:var(--text-muted);font-size:13px" id="processingMethodText">Verifying with Razorpay…</p>
+      </div>
+    </div>
+
+    <!-- Step 3: Success -->
+    <div id="payStepSuccess" style="display:none">
+      <div class="pay-processing">
+        <div class="pay-success-icon">✓</div>
+        <h3 style="font-size:26px;margin-bottom:8px">Payment Successful!</h3>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:6px">Your tickets are booked</p>
+        <p class="booking-ref" id="successRef" style="font-size:15px;margin-bottom:20px"></p>
+        <button class="btn btn-primary" style="width:100%" onclick="window.location.href='history.html'">View My Bookings</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="../js/tmdb.js"></script>
+<script src="../js/places.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/api.js"></script>
+<script src="../js/razorpay.js"></script>
+<script src="../js/chatbot.js"></script>
+<script>
+  if (!Auth.isLoggedIn()) window.location.href = 'login.html';
+
+  // Minimal fallback titles in case TMDb key isn't set (mirrors js/movies.js)
+  const FALLBACK_MOVIES = [
+    { id: 27205, title: 'Inception', posterPath: '/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg' },
+    { id: 155,   title: 'The Dark Knight', posterPath: '/qJ2tW6WMUDux911r6m7haRef0WH.jpg' },
+    { id: 157336,title: 'Interstellar', posterPath: '/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg' },
+    { id: 872585,title: 'Oppenheimer', posterPath: '/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg' },
+  ];
+
+  const params  = new URLSearchParams(location.search);
+  const showId  = params.get('showId');
+  const movieId = parseInt(params.get('movieId'));
+  const date    = params.get('date') || new Date().toISOString().split('T')[0];
+
+  let showData    = null;
+  let selectedIds = new Set();
+  let seatMeta    = {}; // id -> {type, price}
+
+  function priceFor(type) {
+    if (!showData) return 0;
+    return type === 'RECLINER' ? showData.priceRecliner
+         : type === 'PREMIUM'  ? showData.pricePremium
+         : showData.priceRegular;
+  }
+
+  function buildSeatGrid() {
+    const layout = Store.generateSeatLayout();
+    const statusList = Store.getSeatStatus(showId);
+    const statusMap = Object.fromEntries(statusList.map(s => [s.seatId, s.status]));
+
+    const rows = {};
+    layout.forEach(s => {
+      seatMeta[s.id] = { type: s.seatType, price: priceFor(s.seatType) };
+      if (!rows[s.rowLabel]) rows[s.rowLabel] = [];
+      rows[s.rowLabel].push(s);
+    });
+
+    return Object.keys(rows).sort().map(row => {
+      const rowSeats = rows[row].sort((a,b) => a.seatNumber - b.seatNumber);
+      const mid = Math.ceil(rowSeats.length / 2);
+      const seatEls = rowSeats.map((s, i) => {
+        const booked = statusMap[s.id] === 'BOOKED';
+        const cls = ['seat', s.seatType.toLowerCase(), booked ? 'booked' : ''].filter(Boolean).join(' ');
+        const aisle = i === mid - 1 ? '<div class="seat aisle"></div>' : '';
+        return `${aisle}<div class="${cls}" data-id="${s.id}" title="${row}${s.seatNumber} · ${s.seatType} · ₹${priceFor(s.seatType)}">${s.seatNumber}</div>`;
+      }).join('');
+      return `<div class="seat-row"><div class="row-label">${row}</div>${seatEls}</div>`;
+    }).join('');
+  }
+
+  function loadSeats() {
+    document.getElementById('seatMap').innerHTML = `<div class="seat-grid">${buildSeatGrid()}</div>`;
+    document.getElementById('bookingSummary').style.display = 'flex';
+
+    document.getElementById('seatMap').addEventListener('click', e => {
+      const seat = e.target.closest('.seat');
+      if (!seat || seat.classList.contains('booked') || seat.classList.contains('aisle')) return;
+      const id = seat.dataset.id;
+      if (selectedIds.has(id)) {
+        selectedIds.delete(id);
+        seat.classList.remove('selected');
+      } else {
+        if (selectedIds.size >= 8) { showToast('You can book at most 8 seats at once.', 'error'); return; }
+        selectedIds.add(id);
+        seat.classList.add('selected');
+      }
+      updateSummary();
+    });
+  }
+
+  function updateSummary() {
+    const total = [...selectedIds].reduce((sum, id) => sum + (seatMeta[id]?.price || 0), 0);
+    document.getElementById('summarySeats').textContent =
+      selectedIds.size ? `${selectedIds.size} seat${selectedIds.size > 1 ? 's' : ''} selected: ${[...selectedIds].sort().join(', ')}` : 'No seats selected';
+    document.getElementById('summaryTotal').textContent = `₹${total}`;
+    document.getElementById('proceedBtn').disabled = selectedIds.size === 0;
+  }
+
+  // ── Payment modal flow ────────────────────────────
+  function openPaymentModal() {
+    const total = [...selectedIds].reduce((sum, id) => sum + (seatMeta[id]?.price || 0), 0);
+    document.getElementById('payAmount').textContent = `₹${total}`;
+    document.getElementById('payDesc').textContent = `${showData?.movieTitle || 'Movie'} · ${[...selectedIds].sort().join(', ')}`;
+
+    document.getElementById('payStepDetails').style.display = '';
+    document.getElementById('payStepProcessing').style.display = 'none';
+    document.getElementById('payStepSuccess').style.display = 'none';
+    document.getElementById('confirmPayBtn').disabled = false;
+    document.getElementById('confirmPayBtn').textContent = 'Pay Now';
+
+    document.getElementById('paymentModal').classList.add('open');
+  }
+
+  function closePayment() {
+    document.getElementById('paymentModal').classList.remove('open');
+  }
+
+  document.getElementById('proceedBtn').addEventListener('click', openPaymentModal);
+
+  document.getElementById('confirmPayBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('confirmPayBtn');
+    btn.disabled = true;
+
+    const seats = [...selectedIds].map(id => ({
+      seatId: id,
+      rowLabel: id[0],
+      seatNumber: parseInt(id.slice(1)),
+      seatType: seatMeta[id].type,
+      price: seatMeta[id].price,
+    }));
+    const total = seats.reduce((s, x) => s + x.price, 0);
+    const user = Auth.getUser();
+    const tempRef = 'BK' + Date.now();
+
+    try {
+      const result = await RazorpayPay.pay({
+        amountRupees: total,
+        receipt: tempRef,
+        name: 'CinePlex',
+        description: `${showData.movieTitle} · ${seats.length} seat(s)`,
+        prefillEmail: user.email,
+        prefillName: user.name,
+      });
+
+      // Razorpay Checkout closed and verified (or simulated) — now show our processing step briefly then confirm
+      document.getElementById('payStepDetails').style.display = 'none';
+      document.getElementById('payStepProcessing').style.display = '';
+      document.getElementById('processingMethodText').textContent = 'Confirming your booking…';
+      await new Promise(r => setTimeout(r, 600));
+
+      const booking = Store.createBooking({
+        userId: user.id,
+        show: {
+          id: showId,
+          movieId,
+          movieTitle: showData.movieTitle,
+          moviePoster: showData.moviePoster,
+          theaterName: showData.theaterName,
+          screenName: showData.screenName,
+          showDate: showData.showDate,
+          showTime: showData.showTime,
+        },
+        seats,
+        totalAmount: total,
+        paymentMethod: result.simulated ? 'Razorpay (simulated — backend offline)' : `Razorpay (${result.paymentId})`,
+      });
+
+      document.getElementById('payStepProcessing').style.display = 'none';
+      document.getElementById('payStepSuccess').style.display = '';
+      document.getElementById('successRef').textContent = `Booking Ref: ${booking.bookingRef}`;
+    } catch (err) {
+      // User cancelled, payment failed, or verification failed
+      document.getElementById('payStepProcessing').style.display = 'none';
+      document.getElementById('payStepDetails').style.display = '';
+      showToast(err.message || 'Payment was not completed.', 'error');
+    }
+    btn.disabled = false;
+  });
+
+  async function init() {
+    renderNavActions();
+
+    const theaterParam = params.get('theater') || 'Theater';
+
+    // showId format from showsForTheater: `${movieId}_${dateISO}_${theaterKey}_${i}`
+    // We don't have a lookup table for "all shows at this theater" here, so
+    // regenerate using the same theaterKey embedded in the showId and find the match.
+    const parts = showId.split('_');
+    const showIndex = parseInt(parts[parts.length - 1]);
+    const theaterKey = parts.slice(2, -1).join('_');
+
+    const theaterShows = Store.showsForTheater(movieId, date, theaterKey, 0);
+    showData = theaterShows[showIndex] || theaterShows[0];
+
+    if (!showData) {
+      document.getElementById('seatMap').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Show not found</div></div>`;
+      return;
+    }
+    showData.theaterName = theaterParam;
+
+    // Try to get movie title for nicer display
+    try {
+      const m = TMDB.hasKey() ? await TMDB.details(movieId) : FALLBACK_MOVIES.find(x => x.id === movieId);
+      showData.movieTitle = m?.title || 'Movie';
+      showData.moviePoster = m?.posterPath ? TMDB.poster(m.posterPath, 'w185') : null;
+    } catch { showData.movieTitle = 'Movie'; }
+
+    document.getElementById('showInfo').textContent =
+      `${showData.movieTitle} · ${showData.theaterName} · ${showData.showTime}`;
+
+    loadSeats();
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
